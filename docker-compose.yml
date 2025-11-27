@@ -36,7 +36,7 @@ services:
       - .env
       - .env-docker.env
     volumes:
-      - "./api:/home/yzr/api"
-      - "./service:/home/yzr/service"
-      - "./common:/home/yzr/common"
-      - "./db_sql:/home/yzr/db_sql"
+      - "./api:/home/app/api"
+      - "./service:/home/app/service"
+      - "./common:/home/app/common"
+      - "./db_sql:/home/app/db_sql"
