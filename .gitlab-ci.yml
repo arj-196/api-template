@@ -1,0 +1,134 @@
+image: autoplay/cicd-python-docker:latest
+
+variables:
+  FF_NETWORK_PER_BUILD: "true"  # Activate container-to-container networking
+  DOCKER_BUILDKIT: 1  # Enable Docker BuildKit
+  #DOCKER_TLS_CERTDIR: "/certs"
+  # GitLab CI service healthcheck workaround: https://gitlab.com/gitlab-org/gitlab-runner/-/issues/29130
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  # registry details
+  REGISTRY_NAME: "apitemplate"
+  REGISTRY: "apitemplate.azurecr.io"
+
+  POSTGRES_DB: "api-template-job-${CI_JOB_ID}-test"
+  POSTGRES_USER: "runner-${CI_RUNNER_ID}"
+  POSTGRES_PASSWORD: $CI_RUNNER_SHORT_TOKEN
+
+
+services:
+  - docker:dind
+
+stages:
+  - build
+  - test
+  - deploy
+  - check
+
+
+## HELPERS
+.before_script_docker: &before_script_docker
+  - docker info
+  - docker network ls
+  # azure login
+  - az login --service-principal --username $AZ_SP_USERNAME --password $AZ_SP_PASSWORD --tenant $AZ_SP_TENANT
+  # azure ecr login
+  - az acr login --name $REGISTRY_NAME
+
+
+## STAGES
+
+
+# Build
+build:
+  stage: build
+  before_script:
+    - *before_script_docker
+  script:
+    # build image
+    - docker build -t $REGISTRY/app:$CI_COMMIT_SHA .
+    # push image
+    - docker push $REGISTRY/app:$CI_COMMIT_SHA
+
+
+# Style
+style:
+  stage: test
+  before_script:
+    - *before_script_docker
+  script:
+    - docker pull $REGISTRY/app:$CI_COMMIT_SHA
+    - docker run --rm $REGISTRY/app:$CI_COMMIT_SHA flake8
+
+# Tests
+tests:
+  stage: test
+  coverage: '/TOTAL.*\s([.\d]+)%/'
+  before_script:
+    - *before_script_docker
+  script:
+    - docker pull $REGISTRY/app:$CI_COMMIT_SHA
+    - >
+      docker run
+      --rm
+      --network=host
+      --env AWS_DEFAULT_REGION
+      --env REDIS_URI=redis://redis:6379
+      --env DB_URI=postgresql+asyncpg://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB
+      $REGISTRY/app:$CI_COMMIT_SHA
+      bash -c "alembic upgrade head && pytest integration_tests/"
+
+
+## DEPLOYMENT STAGES
+deploy_staging:
+  stage: deploy
+  only:
+    - staging
+  before_script:
+    - *before_script_docker
+  variables:
+    RESOURCE_GROUP: "app-categorise-staging"
+    APP_NAME: "app-categorise-api-staging"
+  script:
+    - | 
+      az containerapp update --resource-group $RESOURCE_GROUP --name $APP_NAME \
+          --image $REGISTRY/app:$CI_COMMIT_SHA \
+          --set-env-vars "BUILD_VERSION=$CI_COMMIT_SHA" "UI_TRACING_VERSION=$CI_COMMIT_SHA"
+
+deploy_prod:
+  stage: deploy
+  only:
+    - prod
+  before_script:
+    - *before_script_docker
+  variables:
+    RESOURCE_GROUP: "app-categorise-prod"
+    APP_NAME: "app-categorise-api-prod"
+  script:
+    - | 
+      az containerapp update --resource-group $RESOURCE_GROUP --name $APP_NAME \
+          --image $REGISTRY/app:$CI_COMMIT_SHA \
+          --set-env-vars "BUILD_VERSION=$CI_COMMIT_SHA" "UI_TRACING_VERSION=$CI_COMMIT_SHA"
+      
+## POST-DEPLOYMENT CHECKS
+staging-check:
+  image:
+    name: postman/newman:5-alpine
+    entrypoint: [""]
+  stage: check
+  script:
+    - newman run tests/postman/collections/api-template.postman_collection.json -d tests/postman/data/api-template.json -e tests/postman/env/staging.postman_environment.json --env-var "authorization_token=$api_token_staging"
+  when: manual
+  only:
+    - staging
+
+prod-check:
+  image:
+    name: postman/newman:5-alpine
+    entrypoint: [""]
+  stage: check
+  script:
+    - newman run tests/postman/collections/api-template.postman_collection.json -d tests/postman/data/api-template.json -e tests/postman/env/prod.postman_environment.json --env-var "authorization_token=$api_token_prod"
+  when: manual
+  only:
+    - prod

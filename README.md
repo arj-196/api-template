@@ -20,6 +20,11 @@ Product structure and important files:
   - `docker-compose.yml`: This file defines the services, networks, and volumes for our multi-container Docker application.
   - `Dockerfile`: This file contains the instructions to build Docker images for all our services.
 
+- **CI/CD related**:
+  - `.gitlab-ci.yml`: This file contains the CI/CD pipeline configuration for GitLab.
+    - The pipeline assumes that we are using Azure as our cloud provider.
+
+
 - **Common module**:
   - `common`: This directory contains common utilities and modules that can be shared across different parts of the application.
     - `common/settings.py`: This file contains the application settings and configuration.
@@ -50,7 +55,7 @@ Product structure and important files:
     - `service/dataset/db.py`: This file contains the database operations related to datasets.
     - `service/dataset/routes.py`: This file contains the FastAPI router for dataset-related API endpoints.
 
-
 - **Integration tests**:
   - `integration_tests`: This directory contains the integration tests for the application.
     - `integration_tests/conftest.py`: This file contains the pytest fixtures for the integration tests.
+
