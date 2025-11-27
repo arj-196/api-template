@@ -1,0 +1,12 @@
+.vscode
+.idea
+.DS_Store
+.env
+data
+# local directory where I can store what i want to store
+zsnippets
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class

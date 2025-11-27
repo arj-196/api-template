@@ -1,0 +1,42 @@
+x-build: &common-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    - GITLAB_USERNAME=${GITLAB_USERNAME}
+    - GITLAB_TOKEN=${GITLAB_TOKEN}
+
+services:
+  db:
+    image: postgres
+    restart: always
+    ports:
+      - "5491:5432"
+    environment:
+      POSTGRES_PASSWORD: example
+      POSTGRES_USER: postgres
+      POSTGRES_DB: autoplay
+
+  db-init:
+    build: *common-build
+    command: "alembic upgrade head"
+    restart: on-failure
+    env_file:
+      - .env
+      - .env-docker.env
+    depends_on:
+      - db
+
+  api:
+    build: *common-build
+    command: |
+      uvicorn --host 0.0.0.0 --port 8091 api.app:app --reload
+    ports:
+      - "8091:8091"
+    env_file:
+      - .env
+      - .env-docker.env
+    volumes:
+      - "./api:/home/yzr/api"
+      - "./service:/home/yzr/service"
+      - "./common:/home/yzr/common"
+      - "./db_sql:/home/yzr/db_sql"
